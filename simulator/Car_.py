@@ -46,7 +46,55 @@ class Segment:
                 for r_ in ray_relative_angles]
 
 
-class StraitSegment(Segment):
+class PolygonSegment(Segment):
+
+    def __init__(self, global_segment_angle, number_of_connections, relative_vertices,
+                 relative_main_line_segments, relative_connection_line_segments):
+        super().__init__(global_segment_angle, number_of_connections)
+        self.relative_vertices = relative_vertices
+        self.relative_main_line_segments = relative_main_line_segments
+        self.relative_connection_line_segments = relative_connection_line_segments
+
+    def point_is_inside_or_on(self, point):
+        raise NotImplementedError("Please Implement this method")
+
+    def scan_lidar_one_laser(self, relative_position, relative_angle, max_laser_distance):
+        assert self.point_is_inside_or_on(relative_position)
+        relative_angle = math.radians(get_in_range_angle(relative_angle))
+        laser = LineSegment(relative_position, Point(relative_position.x +
+                                                     max_laser_distance * math.cos(relative_angle),
+                                                     relative_position.y + max_laser_distance *
+                                                     math.sin(relative_angle)))
+        res = None
+        min_distance = math.inf
+        for line_segment in self.relative_main_line_segments:
+            intersection = line_segment.get_intersection_to(laser)
+            if intersection is None:
+                continue
+            distance = relative_position.get_distance_to(intersection)
+            if distance < min_distance:
+                min_distance = distance
+                res = distance
+        for index in range(2):
+            line_segment = self.relative_connection_line_segments[index]
+            intersection = line_segment.get_intersection_to(laser)
+            if intersection is None:
+                continue
+            distance = relative_position.get_distance_to(intersection)
+            if distance < min_distance:
+                min_distance = distance
+                res = IntersectToConnectionLine(intersection, relative_angle, index, max_laser_distance - distance)
+
+        if min_distance <= max_laser_distance:
+            return res
+        return None
+
+    def step(self):
+        raise NotImplementedError("Please Implement this method")
+
+
+# for Rectangle segments we could use polygon but following implementation is faster
+class RectangleSegment(Segment):
 
     def __init__(self, length, width, global_segment_angle):
         super().__init__(global_segment_angle, 2)
@@ -114,35 +162,31 @@ class StraitSegment(Segment):
         pass
 
 
-class RightTurnSegment(Segment):
+class RightTurnSegment(PolygonSegment):
 
     def __init__(self, length_of_smaller_wall, width, alpha, global_segment_angle):
-        super().__init__(global_segment_angle, 2)
         self.length_of_smaller_wall = length_of_smaller_wall
         self.width = width
         alpha = math.radians(alpha)
         self.alpha = alpha
 
-        self.relative_vertices = []
-        self.relative_vertices.append(Point(0, 0))
-        self.relative_vertices.append(Point(width, 0))
-        self.relative_vertices.append(Point(width, length_of_smaller_wall))
-        self.relative_vertices.append(Point(width + length_of_smaller_wall * math.sin(alpha),
-                                            length_of_smaller_wall - length_of_smaller_wall * math.cos(alpha)))
+        relative_vertices = [Point(0, 0), Point(width, 0), Point(width, length_of_smaller_wall),
+                             Point(width + length_of_smaller_wall * math.sin(alpha),
+                                   length_of_smaller_wall - length_of_smaller_wall * math.cos(alpha))]
         tmp_point = Point(0, length_of_smaller_wall + width / math.tan(alpha / 2))
-        self.relative_vertices.append(Point(tmp_point.y * math.sin(alpha),
-                                            tmp_point.y - tmp_point.y * math.cos(alpha)))
-        self.relative_vertices.append(tmp_point)
+        relative_vertices.append(Point(tmp_point.y * math.sin(alpha),
+                                       tmp_point.y - tmp_point.y * math.cos(alpha)))
+        relative_vertices.append(tmp_point)
 
-        self.relative_main_line_segments = []
-        self.relative_main_line_segments.append(LineSegment(self.relative_vertices[1], self.relative_vertices[2]))
-        self.relative_main_line_segments.append(LineSegment(self.relative_vertices[2], self.relative_vertices[3]))
-        self.relative_main_line_segments.append(LineSegment(self.relative_vertices[4], self.relative_vertices[5]))
-        self.relative_main_line_segments.append(LineSegment(self.relative_vertices[5], self.relative_vertices[0]))
+        relative_main_line_segments = [LineSegment(relative_vertices[1], relative_vertices[2]),
+                                       LineSegment(relative_vertices[2], relative_vertices[3]),
+                                       LineSegment(relative_vertices[4], relative_vertices[5]),
+                                       LineSegment(relative_vertices[5], relative_vertices[0])]
 
-        self.relative_connection_line_segments = []
-        self.relative_connection_line_segments.append(LineSegment(self.relative_vertices[0], self.relative_vertices[1]))
-        self.relative_connection_line_segments.append(LineSegment(self.relative_vertices[3], self.relative_vertices[4]))
+        relative_connection_line_segments = [LineSegment(relative_vertices[0], relative_vertices[1]),
+                                             LineSegment(relative_vertices[3], relative_vertices[4])]
+        super().__init__(global_segment_angle, 2, relative_vertices, relative_main_line_segments,
+                         relative_connection_line_segments)
 
     def point_is_inside_or_on(self, point):
         for line_segment in self.relative_main_line_segments:
@@ -168,52 +212,38 @@ class RightTurnSegment(Segment):
             return False
         return False
 
-    def scan_lidar_one_laser(self, relative_position, relative_angle, max_laser_distance):
-        assert self.point_is_inside_or_on(relative_position)
-        relative_angle = math.radians(get_in_range_angle(relative_angle))
-        laser = LineSegment(relative_position, Point(relative_position.x +
-                                                     max_laser_distance * math.cos(relative_angle),
-                                                     relative_position.y + max_laser_distance *
-                                                     math.sin(relative_angle)))
-        res = None
-        min_distance = math.inf
-        for line_segment in self.relative_main_line_segments:
-            intersection = line_segment.get_intersection_to(laser)
-            if intersection is None:
-                continue
-            distance = relative_position.get_distance_to(intersection)
-            if distance < min_distance:
-                min_distance = distance
-                res = distance
-        for index in range(2):
-            line_segment = self.relative_connection_line_segments[index]
-            intersection = line_segment.get_intersection_to(laser)
-            if intersection is None:
-                continue
-            distance = relative_position.get_distance_to(intersection)
-            if distance < min_distance:
-                min_distance = distance
-                res = IntersectToConnectionLine(intersection, relative_angle, index, max_laser_distance - distance)
-
-        if min_distance <= max_laser_distance:
-            return res
-        return None
-
     def step(self):
         pass
 
 
+# this class just uses LeftTurnSegment and uses symmetry
 class LeftTurnSegment(Segment):
 
     def __init__(self, length_of_smaller_wall, width, alpha, global_segment_angle):
         super().__init__(global_segment_angle, 2)
+        self.right_turn_helper = RightTurnSegment(length_of_smaller_wall, width, alpha,
+                                                  get_in_range_angle(180 - global_segment_angle))
         self.length_of_smaller_wall = length_of_smaller_wall
         self.width = width
         alpha = math.radians(alpha)
         self.alpha = alpha
 
     def scan_lidar_one_laser(self, relative_position, relative_angle, max_laser_distance):
-        pass
+        tmp_res = self.right_turn_helper.scan_lidar_one_laser(Point(-relative_position.x, relative_position.y),
+                                                              get_in_range_angle(180 - relative_angle),
+                                                              max_laser_distance)
+        if isinstance(tmp_res, int):
+            return tmp_res
+        elif isinstance(tmp_res, float):
+            return tmp_res
+        elif isinstance(tmp_res, IntersectToConnectionLine):
+            return IntersectToConnectionLine(relative_point=Point(-tmp_res.relative_point.x, tmp_res.relative_point.y),
+                                             relative_angle=relative_angle,
+                                             connection_number=tmp_res.connection_number,
+                                             remaining_laser=tmp_res.remaining_laser)
+        elif tmp_res is None:
+            return None
+        raise Exception('unexpected result')
 
     def step(self):
         pass
@@ -239,3 +269,9 @@ class Map:
 
     def check_map(self):
         pass  # TODO: check if the map is well connected and widths are the same
+
+
+# tt = RightTurnSegment(3, 3, 120, 3)
+# print(tt.scan_lidar_one_laser(Point(1, 1), 120, 40))
+# tt = LeftTurnSegment(3, 3, 120, 3)
+# print(tt.scan_lidar_one_laser(Point(-1, 1), 60, 40))
