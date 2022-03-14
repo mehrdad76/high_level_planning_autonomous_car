@@ -75,7 +75,7 @@ class PolygonSegment(Segment):
             if distance < min_distance:
                 min_distance = distance
                 res = distance
-        for index in range(2):
+        for index in range(self.number_of_connections):
             line_segment = self.relative_connection_line_segments[index]
             intersection = line_segment.get_intersection_to(laser)
             if intersection is None:
@@ -244,6 +244,57 @@ class LeftTurnSegment(Segment):
         elif tmp_res is None:
             return None
         raise Exception('unexpected result')
+
+    def step(self):
+        pass
+
+
+class SplitterSegment(PolygonSegment):
+
+    def __init__(self, length_of_main_walls, width, global_segment_angle):
+        self.length_of_main_walls = length_of_main_walls
+        self.width = width
+        relative_vertices = [Point(-width / 2, 0), Point(width / 2, 0), Point(width / 2, length_of_main_walls),
+                             Point(width / 2 + length_of_main_walls * math.cos(math.radians(30)),
+                                   length_of_main_walls + length_of_main_walls * math.sin(math.radians(30)))]
+        tmp = length_of_main_walls + width * math.cos(math.radians(30))
+        relative_vertices.append(Point(length_of_main_walls * math.cos(math.radians(30)),
+                                       tmp + length_of_main_walls * math.sin(math.radians(30))))
+        relative_vertices.append(Point(0, tmp))
+        relative_vertices.append(Point(-length_of_main_walls * math.cos(math.radians(30)),
+                                       tmp + length_of_main_walls * math.sin(math.radians(30))))
+        relative_vertices.append(Point(-width/2 - length_of_main_walls * math.cos(math.radians(30)),
+                                       length_of_main_walls + length_of_main_walls * math.sin(math.radians(30))))
+        relative_vertices.append(Point(-width/2, length_of_main_walls))
+
+        relative_main_line_segments = [LineSegment(relative_vertices[1], relative_vertices[2]),
+                                       LineSegment(relative_vertices[2], relative_vertices[3]),
+                                       LineSegment(relative_vertices[4], relative_vertices[5]),
+                                       LineSegment(relative_vertices[5], relative_vertices[6]),
+                                       LineSegment(relative_vertices[7], relative_vertices[8]),
+                                       LineSegment(relative_vertices[8], relative_vertices[0])]
+
+        relative_connection_line_segments = [LineSegment(relative_vertices[0], relative_vertices[1]),
+                                             LineSegment(relative_vertices[3], relative_vertices[4]),
+                                             LineSegment(relative_vertices[6], relative_vertices[7])]
+
+        super().__init__(global_segment_angle, 3, relative_vertices, relative_main_line_segments,
+                         relative_connection_line_segments)
+
+    def point_is_inside_or_on(self, point):
+        if -self.width/2 <= point.x <= self.width/2 and 0 <= point.y <= self.relative_vertices[5].y:
+            return True
+        if ((self.relative_vertices[3].x <= point.x <= self.relative_vertices[5].x) or
+            (self.relative_vertices[5].x <= point.x <= self.relative_vertices[3].x)) and \
+            ((self.relative_vertices[3].y <= point.y <= self.relative_vertices[5].y) or
+             (self.relative_vertices[5].y <= point.y <= self.relative_vertices[3].y)):
+            return True
+        if ((self.relative_vertices[7].x <= point.x <= self.relative_vertices[5].x) or
+            (self.relative_vertices[5].x <= point.x <= self.relative_vertices[7].x)) and \
+            ((self.relative_vertices[7].y <= point.y <= self.relative_vertices[5].y) or
+             (self.relative_vertices[5].y <= point.y <= self.relative_vertices[7].y)):
+            return True
+        return False
 
     def step(self):
         pass
