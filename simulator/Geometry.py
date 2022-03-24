@@ -23,6 +23,10 @@ class Point:
     def get_distance_to(self, point):
         return math.sqrt((math.pow(self.y - point.y, 2)) + (math.pow(self.x - point.x, 2)))
 
+    def get_rotated(self, alpha):
+        return Point(self.x * math.cos(math.radians(alpha)) - self.y * math.sin(math.radians(alpha)),
+                     self.x * math.sin(math.radians(alpha)) + self.y * math.cos(math.radians(alpha)))
+
     def __str__(self):
         return '(' + str(self.x) + ', ' + str(self.y) + ')'
 
@@ -91,6 +95,9 @@ class LineSegment:
         x = det(d, xdiff) / div
         y = det(d, ydiff) / div
         return Point(x, y)
+
+    def length(self):
+        return abs(self.start_point.get_distance_to(self.end_point))
 
     def __str__(self):
         return '(' + str(self.start_point) + ' -> ' + str(self.end_point) + ')'
